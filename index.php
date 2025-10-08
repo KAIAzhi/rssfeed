@@ -1,7 +1,4 @@
 <?php
-// rss_parser.php
-// Simple RSS parser without caching, includes author names and improved image extraction
-
 $feed_url = 'https://www.vox.com/rss/index.xml';
 
 function fetch_feed($url) {
@@ -91,43 +88,13 @@ if ($raw === false || trim($raw) === '') {
 
             // Extract image
             $image = '';
-            if (isset($it->enclosure) && isset($it->enclosure->attributes()->url)) {
-                $image = (string)$it->enclosure->attributes()->url;
-            } else {
-                if (isset($namespaces['media'])) {
-                    $media = $it->children($namespaces['media']);
-                    if (isset($media->content) && isset($media->content->attributes()->url)) {
-                        $image = (string)$media->content->attributes()->url;
-                    } elseif (isset($media->thumbnail) && isset($media->thumbnail->attributes()->url)) {
-                        $image = (string)$media->thumbnail->attributes()->url;
-                    }
-                }
-                if ($image === '') {
-                    if (preg_match('/<img[^>]+src=["\']([^"\']+)["\']/i', $description, $m)) {
-                        $image = $m[1];
-                    }
-                }
-            }
-
-            // NEW: Extract image from <content type="html"> blocks
             if (isset($it->content) && $image === '') {
                 $contentHtml = (string)$it->content;
                 if (preg_match('/<img[^>]+src=["\']([^"\']+)["\']/i', $contentHtml, $m)) {
                     $image = $m[1];
                 }
             }
-
-            // NEW: Extract from <content:encoded> namespace (WordPress-style)
-            if ($image === '' && isset($namespaces['content'])) {
-                $content = $it->children($namespaces['content']);
-                if (isset($content->encoded)) {
-                    $contentHtml = (string)$content->encoded;
-                    if (preg_match('/<img[^>]+src=["\']([^"\']+)["\']/i', $contentHtml, $m)) {
-                        $image = $m[1];
-                    }
-                }
-            }
-
+            
             $items[] = [
                 'title' => $title,
                 'link' => $link,
