@@ -1,4 +1,6 @@
 <?php
+// rss_parser.php
+// Simple RSS parser without caching, includes author names and improved image extraction
 
 $feed_url = 'https://www.vox.com/rss/index.xml';
 
@@ -71,9 +73,23 @@ if ($raw === false || trim($raw) === '') {
                     }
                 }
             }
+
             $pubDate = (string) ($it->pubDate ?? $it->published ?? $it->updated ?? '');
             $description = (string) ($it->description ?? $it->summary ?? $it->content ?? '');
 
+            // Extract author name
+            $author = '';
+            if (isset($it->author)) {
+                if (isset($it->author->name)) {
+                    $author = (string) $it->author->name;
+                } else {
+                    $author = (string) $it->author;
+                }
+            } elseif (isset($it->children($namespaces['dc'])['creator'])) {
+                $author = (string) $it->children($namespaces['dc'])['creator'];
+            }
+
+            // Extract image
             $image = '';
             if (isset($it->enclosure) && isset($it->enclosure->attributes()->url)) {
                 $image = (string)$it->enclosure->attributes()->url;
@@ -82,10 +98,31 @@ if ($raw === false || trim($raw) === '') {
                     $media = $it->children($namespaces['media']);
                     if (isset($media->content) && isset($media->content->attributes()->url)) {
                         $image = (string)$media->content->attributes()->url;
+                    } elseif (isset($media->thumbnail) && isset($media->thumbnail->attributes()->url)) {
+                        $image = (string)$media->thumbnail->attributes()->url;
                     }
                 }
                 if ($image === '') {
                     if (preg_match('/<img[^>]+src=["\']([^"\']+)["\']/i', $description, $m)) {
+                        $image = $m[1];
+                    }
+                }
+            }
+
+            // NEW: Extract image from <content type="html"> blocks
+            if (isset($it->content) && $image === '') {
+                $contentHtml = (string)$it->content;
+                if (preg_match('/<img[^>]+src=["\']([^"\']+)["\']/i', $contentHtml, $m)) {
+                    $image = $m[1];
+                }
+            }
+
+            // NEW: Extract from <content:encoded> namespace (WordPress-style)
+            if ($image === '' && isset($namespaces['content'])) {
+                $content = $it->children($namespaces['content']);
+                if (isset($content->encoded)) {
+                    $contentHtml = (string)$content->encoded;
+                    if (preg_match('/<img[^>]+src=["\']([^"\']+)["\']/i', $contentHtml, $m)) {
                         $image = $m[1];
                     }
                 }
@@ -96,6 +133,7 @@ if ($raw === false || trim($raw) === '') {
                 'link' => $link,
                 'pubDate' => $pubDate,
                 'description' => $description,
+                'author' => $author,
                 'image' => $image,
             ];
         }
@@ -158,6 +196,7 @@ if ($raw === false || trim($raw) === '') {
         width: 100%;
         height: 100%;
         object-fit: cover;
+        display: block;
     }
     .content {
         flex: 1;
@@ -178,6 +217,13 @@ if ($raw === false || trim($raw) === '') {
     a.readmore {
         display: inline-block;
         margin-top: 10px;
+    }
+    footer {
+        max-width: 1000px;
+        margin: 14px auto;
+        padding: 8px 16px;
+        color: #666;
+        font-size: 13px;
     }
     .error {
         color: #a33;
@@ -205,7 +251,6 @@ if ($raw === false || trim($raw) === '') {
 </header>
 
 <div class="container">
-
 <?php if (!empty($error_message)): ?>
     <div class="error"><?php echo safe_text($error_message); ?></div>
 <?php endif; ?>
@@ -220,6 +265,7 @@ if (!empty($feed_data['items']) && is_array($feed_data['items'])) {
         $pub = $it['pubDate'];
         $desc = $it['description'];
         $img = $it['image'];
+        $author = $it['author'];
         $excerpt = strip_tags($desc);
         if (strlen($excerpt) > 280) $excerpt = substr($excerpt,0,277).'...';
         $date_disp = '';
@@ -239,7 +285,7 @@ if (!empty($feed_data['items']) && is_array($feed_data['items'])) {
             </div>
             <div class="content">
                 <h3 class="title"><a href="<?php echo safe_text($link); ?>" target="_blank" rel="noopener noreferrer"><?php echo safe_text($title); ?></a></h3>
-                <div class="byline"><?php echo safe_text($date_disp); ?></div>
+                <div class="byline">By <?php echo safe_text($author ?: 'Unknown'); ?><?php if ($date_disp) echo ' | ' . safe_text($date_disp); ?></div>
                 <div class="excerpt"><?php echo $excerpt; ?></div>
                 <a class="readmore" href="<?php echo safe_text($link); ?>" target="_blank" rel="noopener noreferrer">Read on site →</a>
             </div>
@@ -251,8 +297,6 @@ if (!empty($feed_data['items']) && is_array($feed_data['items'])) {
 }
 ?>
 </div>
-
 </div>
-
 </body>
 </html>
